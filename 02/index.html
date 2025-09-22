@@ -8,8 +8,18 @@
       </style>
 
       <script type="text/javascript" src="https://get.goXTK.com/xtk_edge.js"></script>
+      <script type="text/javascript" src="loader.js"></script>
+
 
       <script>
+
+
+          var r;
+          var SIZE = 5;
+          var GAP = 20;
+          var SELECTED_CUBE;
+          var camera_move = false;
+
 
           window.onload = function() {
 
@@ -18,51 +28,81 @@
               r = new X.renderer3D();
               r.init();
 
-              c = new X.cube();
-              c.color = [1, 0, 0];
-                      // R  G  B
 
-              r.add(c);
+              for (var z=-5; z < 6; z++) {
+                  for (var y=-5; y < 6; y++) {
+                    for(var x=-5; x < 6; x++) {
+                      new_cube = new X.cube();
+                      new_cube.transform.translateX((SIZE + GAP) * x);
+                      new_cube.transform.translateY((SIZE + GAP) * y);
+                      new_cube.transform.translateZ((SIZE + GAP) * z);
+                      r.add(new_cube);
+                      console.log(new_cube.center);
+                    }
+                  }
+                }
 
+                //changed to match my scale
+                r.camera.position = [0, 0, 600];
+                
+                
+                
+                r.onRender = function() {
+                  // spin the camera in X direction by 1 degree
+                  if (camera_move) {r.camera.rotate([1, 0]);}
+                }
 
-              c2 = new X.cube();
-              c2.color = [0, 0, 1];
-                        // R  G  B
-              c2.center = [10, 0, 0];
-              
-              //prevents z-fighting
-              c2.lengthX = 20.01
-              c2.lengthY = 20.01
-              c2.lengthZ = 20.01
+                
+                //gets cube that mouse is hovering over
+                r.interactor.onMouseMove = function(event) {
+                  cubeid = r.pick(event.offsetX, event.offsetY) ;
+                  SELECTED_CUBE = r.get(cubeid);
 
-              r.add(c2);
+                };
+                
 
-              c3 = new X.cube();
-
-              c3.center = [0,30,0]
-
-              r.add(c3)
-
-
-              for (var i = 0; i < 10; i++) {
-                c4 = new X.cube(); 
-                c4.center = [0,30+30 *i, 0];
-
-                r.add(c4);
-              }
-
-
-
-              
 
 
 
               r.render();
 
-              // console.log('Hello CS460!')
+             
 
 
           }
+
+
+
+          
+
+
+          window.onkeypress = function(e) {
+            
+
+            if (e.key == 'b') { //toggles cam move
+              camera_move = !camera_move;
+            }
+
+            if (e.key == 'o' ) {download("scene.json");}
+            if (e.key == 'l' ) {upload("scene.json");}
+
+
+            if (!SELECTED_CUBE) {}
+            else {
+              if (e.key == 'q') { //vanishs
+                SELECTED_CUBE.visible = false;
+              }
+              if (e.key == 'w') { //recolors
+                SELECTED_CUBE.color = [Math.random(), Math.random(), Math.random()];
+              }
+              if (e.key == 'e') { // rotates
+                SELECTED_CUBE.transform.rotateX(10);
+              }
+            }
+
+          }
+
+
 
       </script>
 
