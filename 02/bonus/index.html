@@ -1,0 +1,147 @@
+<html>
+  <head>
+
+      <style>
+        body {
+            background-color: black;
+        }
+      </style>
+
+      <script type="text/javascript" src="https://get.goXTK.com/xtk_edge.js"></script>
+      <script type="text/javascript" src="loader.js"></script>
+
+
+      <script>
+
+
+          var r;
+          var SIZE = 5;
+          var GAP = 20;
+          var SELECTED_CUBE;
+          var camera_move = false;
+
+          var CAMERAS = [];
+          var cam_index = 0;
+          var camCycle = null;
+          var cycleRunning = false;
+
+
+          window.onload = function() {
+
+              // once everything is done loading
+
+              r = new X.renderer3D();
+              r.init();
+
+
+              for (var z=-5; z < 6; z++) {
+                  for (var y=-5; y < 6; y++) {
+                    for(var x=-5; x < 6; x++) {
+                      hex = new X.sphere();
+
+                      hex.radius = SIZE ;
+                      hex.radius = SIZE + Math.random() * SIZE * 2;
+
+                      
+
+                      hex.transform.translateX((SIZE + GAP) * x);
+                      hex.transform.translateY((SIZE + GAP) * y);
+                      hex.transform.translateZ((SIZE + GAP) * z);
+                      r.add(hex);
+                      
+                    }
+                  }
+                }
+
+                //changed to match my scale
+                r.camera.position = [0, 0, 600];
+                
+                
+                
+                r.onRender = function() {
+                  // spin the camera in X direction by 1 degree
+                  if (camera_move) {r.camera.rotate([1, 0]);}
+                }
+
+                
+                //gets cube that mouse is hovering over
+                r.interactor.onMouseMove = function(event) {
+                  cubeid = r.pick(event.offsetX, event.offsetY) ;
+                  SELECTED_CUBE = r.get(cubeid);
+
+                };
+                
+
+
+
+
+              r.render();
+
+             
+
+
+          }
+
+
+
+          
+
+
+          window.onkeypress = function(e) {
+            
+
+            if (e.key == 'b') { //toggles cam move
+              camera_move = !camera_move;
+            }
+
+            if (e.key == 'o' ) {download("scene.json");}
+            if (e.key == 'l' ) {upload("scene.json");}
+
+            if (e.key == 'c') {
+              var view = new Float32Array(r.camera.view);
+              CAMERAS.push (view);
+            }
+
+            if (e.key == 'v') {
+              
+              if (cycleRunning) {
+                cycleRunning = false;
+                clearInterval(camCycle);
+              }
+              else {
+                cycleRunning = true;
+                camCycle = setInterval(() => {
+                
+                r.camera.view = CAMERAS[cam_index];
+                r.render();
+
+                cam_index = (cam_index + 1) % CAMERAS.length
+                },1000);
+              }
+                
+              
+            }
+
+            if (!SELECTED_CUBE) {}
+            else {
+              if (e.key == 'q') { //vanishs
+                SELECTED_CUBE.visible = false;
+              }
+              if (e.key == 'w') { //recolors
+                SELECTED_CUBE.color = [Math.random(), Math.random(), Math.random()];
+              }
+              if (e.key == 'e') { // rotates
+                SELECTED_CUBE.transform.rotateX(10);
+              }
+            }
+
+          }
+
+
+
+      </script>
+
+  </head>
+  <body>
+  </body>
+</html>
