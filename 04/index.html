@@ -1,0 +1,395 @@
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+    <title>Default WebGL!</title>
+    <style>
+      html, body { 
+        background-color:#000;
+        background: url('https://cs460.org/assignments/04/bg.jpg');
+        background-size: cover;
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden !important;  
+      }
+
+      #c {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <script type="text/javascript" src="https://cs460.org/js/glmatrix.js"></script>
+  
+  <script id="vertexshader" type="glsl">
+    attribute vec3 a_position;
+
+    
+    uniform float u_pointsize;
+    uniform mat4 u_transform;
+
+    void main(void) {
+
+      vec4 final_position =  u_transform * vec4( a_position, 1.);
+
+    
+      gl_Position =  final_position;
+      gl_PointSize = u_pointsize;
+    
+    }
+  </script>
+  
+  <script id="fragmentshader" type="glsl">
+    precision mediump float;
+
+    uniform vec4 u_color;
+
+    void main(void) {
+
+      gl_FragColor = u_color;
+
+    }
+  </script>
+  
+  <script>
+
+    var c, gl;
+    var v_shader, f_shader, shaderprogram;
+    var vertices, indices, v_buffer, i_buffer;
+    
+    var all_fish = [];
+
+
+
+    let mouseX = 0;
+    let mouseY = 0;
+
+
+    window.addEventListener('mousemove', (e) => {
+
+    mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+
+    mouseY = -((e.clientY / window.innerHeight) * 2 - 1); 
+    
+  });
+
+
+    window.onload = function() {
+
+
+
+      //************************************************************//
+      //
+      // INITIALIZE WEBGL
+      //
+      c = document.getElementById( 'c' ); // setup canvas
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
+
+      gl = c.getContext( 'webgl' ); // setup GL context
+      gl.viewport(0, 0, c.width, c.height );
+
+
+      //************************************************************//
+      //
+      // SHADERS
+      //
+      v_shader = gl.createShader( gl.VERTEX_SHADER );
+      f_shader = gl.createShader( gl.FRAGMENT_SHADER );
+      
+      // compile vertex shader
+      gl.shaderSource( v_shader, document.getElementById( 'vertexshader' ).innerText );
+      gl.compileShader( v_shader );
+
+      if (!gl.getShaderParameter( v_shader, gl.COMPILE_STATUS)) {
+        console.log(gl.getShaderInfoLog( v_shader ));
+      }
+
+      // compile fragment shader
+      gl.shaderSource( f_shader, document.getElementById( 'fragmentshader' ).innerText );
+      gl.compileShader( f_shader );
+
+      if (!gl.getShaderParameter( f_shader, gl.COMPILE_STATUS)) {
+        console.log(gl.getShaderInfoLog( f_shader ));
+      }
+
+      // attach and link the shaders
+      shaderprogram = gl.createProgram();
+      gl.attachShader( shaderprogram, v_shader );
+      gl.attachShader( shaderprogram, f_shader );
+
+      gl.linkProgram( shaderprogram );
+
+      gl.useProgram( shaderprogram );
+
+
+      
+    //   all_fish.push( createFish( new Float32Array([-.2,-.2,0]), new Float32Array([1.,1.,1.,1.]),1 , 1 ) );
+    //   all_fish.push( createFish( new Float32Array([0,-.2,0]), new Float32Array([1.,0,1.,1.]), 1, 10 ) );
+
+      all_fish.push( createFish( [0, 0, 0], [1,0,0,1], .5, -1) ) // red fish
+
+      for (let i = 0; i < 100; i++) {
+        let random_color = new Float32Array([
+            Math.random(), 
+            Math.random(), 
+            Math.random(), 
+            1.0
+        ]);
+
+        let random_offset = new Float32Array([
+            Math.random() * 2 - 1, 
+            Math.random() * 2 - 1,
+            0.0
+        ]);
+
+        let random_scale = Math.random() * 0.3 + 0.05; 
+
+        all_fish.push(createFish(random_offset, [1,1,1,1], random_scale, 1));
+        }
+      
+
+      animate();
+
+    };
+
+
+    function createFish(offset, color, scale = 1., direction = 1) {
+
+
+      //************************************************************//
+      //
+      // CREATE GEOMETRY
+      //
+      var vertices = new Float32Array( [
+            0.5, 0.0, 0.0, // 0: nose
+            0.2, 0.25, 0.0, // 1: upper body
+            -0.2, 0.15, 0.0, // 2: upper tail base
+            -0.4, 0.3, 0.0, // 3: upper tail tip
+            -0.4, -0.3, 0.0, // 4: lower tail tip
+            -0.2, -0.15, 0.0, // 5: lower tail base
+            0.2, -0.25, 0.0 // 6: lower body
+
+        ] ); // 2 * 4 == 8 bytes
+
+      // now use indices
+      indices = new Uint8Array([
+            0, 1, 6, // main body
+            1, 2, 6, // upper mid-body
+            2, 5, 6, // rear body
+            2, 3, 5, // tail top
+            3, 4, 5 // tail fin
+
+        ]);
+
+
+      
+
+        // scale the fish
+        for (let i = 0; i < vertices.length; i++) {
+            vertices[i] *= scale;
+        }
+
+      var v_buffer = gl.createBuffer(); // create
+      gl.bindBuffer( gl.ARRAY_BUFFER, v_buffer ); // bind
+      gl.bufferData( gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW ); // put data in
+      gl.bindBuffer( gl.ARRAY_BUFFER, null ); // unbind
+
+      var i_buffer = gl.createBuffer(); // create
+      gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, i_buffer ); // bind
+      gl.bufferData( gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW ); // put data in
+      gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, null ); // unbind
+
+        var eye_vertex;
+        if (direction == -1) {
+          
+          eye_vertex = new Float32Array([0.2 * scale, -0.2 * scale, 0.0]);
+        }
+        else {eye_vertex = new Float32Array([0.2 * scale, 0.2 * scale, 0.0]);}
+
+        eye_v_buffer = gl.createBuffer(); // create
+        gl.bindBuffer( gl.ARRAY_BUFFER, eye_v_buffer ); // bind
+        gl.bufferData( gl.ARRAY_BUFFER, eye_vertex, gl.STATIC_DRAW ); // put data in
+        gl.bindBuffer( gl.ARRAY_BUFFER, null ); // unbind
+
+
+
+      return [v_buffer, i_buffer , eye_v_buffer, offset, color, scale, direction];
+
+    };
+
+    // make other fish avoid red fish
+    function avoidRedFish(fishPos, redPos,color,  minDistance = .4, speed = 0.02) {
+
+      let dx = fishPos[0] - redPos[0];
+      let dy = fishPos[1] - redPos[1];
+
+      let dist = Math.sqrt(dx*dx + dy*dy);
+
+      // if close enough, move away from red fishand change color to red
+      if (dist < minDistance && dist > 0) {
+          //move away
+          fishPos[0] += (dx / dist) * speed;
+          fishPos[1] += (dy / dist) * speed;
+
+          //set color to red
+          color[0] = 1;
+          color[1] = 0;
+          color[2] = 0;
+          color[3] = 1; 
+      } else {
+          //gradually return to white 
+          color[0] += (1 - color[0]) * 0.01;
+          color[1] += (1 - color[1]) * 0.01;
+          color[2] += (1 - color[2]) * 0.01;
+      }
+    }
+
+
+
+    var step_x = .01;
+    var step_y = .01;
+    
+
+    function animate() {
+
+      requestAnimationFrame(animate);
+
+      gl.clearColor( 0., 0., 0., 0.)
+      gl.clear( gl.COLOR_BUFFER_BIT );
+
+      gl.enable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.disable(gl.DEPTH_TEST);
+
+
+        for( var r = 0; r < all_fish.length; r++ ) {
+
+
+
+
+            // [v_buffer, i_buffer , eye_v_buffer, offset, color, scale, direction];
+            var current_buffers = all_fish[r];
+            var current_v_buffer = current_buffers[0];
+            var current_i_buffer = current_buffers[1];
+            var current_eye_v_buffer = current_buffers[2];
+            var current_offset = current_buffers[3];
+            var current_color = current_buffers[4];
+            var current_scale = current_buffers[5];
+            var current_direction = current_buffers[6];
+
+            current_buffers[6] = current_direction;
+
+            let prevX = current_offset[0];
+            let prevY = current_offset[1];
+
+
+            // pacman loop effect
+            if (current_offset[0] >= 1.1) {
+                current_offset[0] = -1.1; 
+                current_offset[1] = Math.random() * 2 - 1; 
+            }
+
+            
+            
+
+
+            //********FISH MOVEMENT****************************************************//
+              if (r == 0) {
+                  let speed = 0.05; 
+                  current_offset[0] += (mouseX - current_offset[0]) * speed;
+                  current_offset[1] += (mouseY - current_offset[1]) * speed;
+              } else {
+                  // normal movement + avoid red fish
+                  current_offset[0] += 0.01 * current_direction;
+                  current_offset[1] += 0.05 * (Math.random() - 0.5);
+                  let redFishPos = all_fish[0][3];
+                  avoidRedFish(current_offset, redFishPos, current_color);
+              }
+            
+
+            //************************************************************//
+
+            // change in movement
+            let dx = current_offset[0] - prevX;
+            let dy = current_offset[1] - prevY;
+
+            // rotation specs
+            let maxRot = 15 * Math.PI / 180; // 15*
+            let rotSpeed = 50; // maps small dy to visible tilt
+
+            // angle based on ver mov
+            let angle = Math.max(-maxRot, Math.min(maxRot, dy * rotSpeed));
+
+            
+            let cosT = Math.cos(angle);
+            let sinT = Math.sin(angle);
+
+
+            let transform = new Float32Array([
+                current_direction * cosT,   sinT,   0,  0,
+                -sinT, current_direction * cosT,   0,   0,
+                0,            0,             1,  0,
+                current_offset[0], current_offset[1], current_offset[2], 1
+            ]);
+
+
+            let u_transform = gl.getUniformLocation(shaderprogram, 'u_transform');
+            gl.uniformMatrix4fv(u_transform, false, transform);
+
+
+            //************************************************************//
+            //
+            // CONNECT SHADER WITH GEOMETRY
+            //
+            
+            gl.bindBuffer( gl.ARRAY_BUFFER, current_v_buffer );
+            gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, current_i_buffer );
+
+
+            var a_position = gl.getAttribLocation( shaderprogram, 'a_position' );
+            gl.vertexAttribPointer( a_position, 3, gl.FLOAT, false, 0, 0 );
+            gl.enableVertexAttribArray ( a_position );
+
+            var u_color = gl.getUniformLocation( shaderprogram, 'u_color' );
+
+            t = performance.now() * 0.001;
+            a = 0.9 + 0.5 * Math.sin(t * 2.0); // 0.2..1.0
+            current_color[3] = a * 0.7; // pulsate alpha
+            if (r == 0) {
+            // the large fish aka. first object should still be red!
+            current_color = [1,0,0,1];
+            }
+            
+
+            gl.uniform4fv( u_color, current_color );
+
+            gl.drawElements( gl.TRIANGLES, 15, gl.UNSIGNED_BYTE, 0);
+
+
+            // draw eye
+            gl.bindBuffer(gl.ARRAY_BUFFER, current_eye_v_buffer);
+            gl.vertexAttribPointer(a_position, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(a_position);
+
+
+            gl.uniformMatrix4fv(u_transform, false, transform);
+
+            gl.uniform4fv(u_color, new Float32Array([0, 0, 0, 0.5]));
+            let u_pointsize = gl.getUniformLocation(shaderprogram, 'u_pointsize');
+            gl.uniform1f(u_pointsize, current_scale * 20.0);
+
+            gl.drawArrays(gl.POINTS, 0, 1);
+
+        }
+
+
+    };
+
+  </script>
+  <body>
+    <canvas id="c"></canvas>
+  </body>
+</html>
