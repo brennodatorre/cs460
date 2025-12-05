@@ -1,0 +1,419 @@
+
+<html l>
+<head>
+  <meta charset="utf-8" />
+  <title>Tooo Many Reminders?</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://threejs.org/examples/main.css">
+  <style>body{margin:0;overflow:hidden}</style>
+</head>
+<body>
+
+  <input type="file" id="upload" accept=".gltf,.glb" style="display:none;">
+
+
+  <div id="container"></div>
+
+  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@latest/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@latest/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+  import Stats from 'three/addons/libs/stats.module.js';
+  import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+  const container = document.getElementById('container');
+
+  let renderer, scene, camera, stats;
+  let controls;
+  let raycaster;
+  const mouse = new THREE.Vector2();
+
+  let currentRoomRoot = null;
+
+  //all meshes
+  const roomMeshes = [];
+
+  // decal textures
+  const textureLoader = new THREE.TextureLoader();
+  const decalDiffuse = textureLoader.load('postit.png');
+  decalDiffuse.colorSpace = THREE.SRGBColorSpace;
+  const decalNormal = textureLoader.load('postit.png');
+
+  // base decal material 
+  const baseDecalMaterial = new THREE.MeshPhongMaterial({
+    specular: 0x444444,
+    map: decalDiffuse,
+    normalMap: decalNormal,
+    normalScale: new THREE.Vector2(1, 1),
+    shininess: 20,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4
+  });
+
+  const decals = []; // placed decals
+
+  // helper to orient decal from face normal
+  const mouseHelper = new THREE.Mesh(new THREE.BoxGeometry(1,1,10), new THREE.MeshNormalMaterial());
+  mouseHelper.visible = false;
+  scene?.add?.(mouseHelper); // if scene exists
+
+  // parameters setup
+  const params = {
+    Scale: 8,
+    rotateRandom: false,
+    maxDecals: 200,
+    stickerTint: 0xfbff00,
+    clear: () => removeDecals()
+  };
+
+  init();
+  animate();
+
+
+
+
+
+
+
+
+  function init() {
+    // renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+
+    stats = new Stats();
+    container.appendChild(stats.dom);
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+    camera.position.set(0, 60, 140);
+
+    //controls
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.minDistance = 20;
+    controls.maxDistance = 400;
+
+    //lights
+    scene.add(new THREE.AmbientLight(0x888888));
+    const d1 = new THREE.DirectionalLight(0xfff1e6, 1.2); d1.position.set(1,1,0.2); scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0xcfe8ff, 1.0); d2.position.set(-1,0.8,-0.6); scene.add(d2);
+
+    raycaster = new THREE.Raycaster();
+
+    // mouseHelper setup
+    mouseHelper.visible = false;
+    scene.add(mouseHelper);
+
+    // UI /////////
+
+    const gui = new GUI();
+
+    gui.add(params, 'Scale', 1, 60);
+    
+    gui.add(params, 'rotateRandom');
+    gui.add(params, 'maxDecals', 10, 1000, 1);
+    gui.addColor(params, 'stickerTint').name('tint');
+
+    const uploadInput = document.getElementById('upload');
+    const guiFolder = gui.addFolder('Room Controls');
+    guiFolder.add({upload: ()=> uploadInput.click()}, 'upload').name('Load GLTF/GLB');
+
+
+    gui.add(params, 'clear');
+    gui.open();
+
+    let pointerDownPos = new THREE.Vector2();
+    let isDragging = false;
+
+    // window events
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary) return;
+      pointerDownPos.set(event.clientX, event.clientY);
+      isDragging = false;
+    });
+
+
+    window.addEventListener('pointermove', (event) => {
+      if (!event.isPrimary) return;
+
+      // check if moved more than 5px
+      if (pointerDownPos.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 5) {
+          isDragging = true;
+      }
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+    });
+
+
+    window.addEventListener('pointerup', (event) => {
+      if (!event.isPrimary) return;
+      if (!isDragging) {
+          // only apply sticker if it was a click
+          handlePointerClick(event);
+      }
+    });
+
+    //deals with not putting sticker when dragging
+    function handlePointerClick(event) {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+
+      const hits = raycaster.intersectObjects(roomMeshes, false);
+      if (hits.length === 0) return;
+
+      applyStickerToHit(hits[0]);
+
+      if (decals.length > params.maxDecals) {
+          const d = decals.shift();
+          scene.remove(d);
+      }
+    }
+
+
+    loadCustomInput();
+    loadModel();
+
+  }
+
+  function loadCustomInput() {
+    const uploadInput = document.getElementById('upload');
+    uploadInput.addEventListener('change', function(event){
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.addEventListener('load', function(e){
+        const contents = e.target.result;
+
+        // Remove previous room meshes
+        roomMeshes.forEach(m => scene.remove(m));
+        roomMeshes.length = 0;
+
+        const loader = new GLTFLoader();
+
+        //load from ArrayBuffer or data URL depending on file type
+        if (file.name.toLowerCase().endsWith('.glb')) {
+            loader.parse(contents, '', function(gltf){
+                addRoomFromGLTF(gltf);
+            });
+        } else if (file.name.toLowerCase().endsWith('.gltf')) {
+            // For .gltf, contents is JSON text
+            loader.parse(contents, '', function(gltf){
+                addRoomFromGLTF(gltf);
+            });
+        }
+    });
+
+    
+    if (file.name.toLowerCase().endsWith('.glb')) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
+    });
+
+  }
+
+  function addRoomFromGLTF(gltf){
+
+    if (currentRoomRoot) {
+      scene.remove(currentRoomRoot);
+      currentRoomRoot.traverse(child => {
+          if (child.isMesh) roomMeshes.splice(roomMeshes.indexOf(child), 1);
+      });
+
+      removeDecals();
+    }
+
+    const root = gltf.scene;
+    root.traverse((child) => {
+        if (child.isMesh){
+            if (!child.material) child.material = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            child.geometry.computeVertexNormals && child.geometry.computeVertexNormals();
+            roomMeshes.push(child);
+        }
+    });
+
+    root.scale.set(10,10,10);
+    scene.add(root);
+
+    currentRoomRoot = root;
+  }
+
+
+  function loadModel() {
+    const loader = new GLTFLoader();
+
+    const model = "room.glb"; //default model path 
+
+    loader.load(model, (gltf) => {
+
+
+      if (currentRoomRoot) {
+          scene.remove(currentRoomRoot);
+          currentRoomRoot.traverse(child => {
+          if (child.isMesh) roomMeshes.splice(roomMeshes.indexOf(child), 1);});
+      }
+
+
+      const root = gltf.scene;
+      root.traverse((child) => {
+        //setup meshs to receive decal
+        if (child.isMesh) {
+          // convert to a material that receives light 
+          if (!child.material) child.material = new THREE.MeshStandardMaterial({ color: 0x888888 });
+          // ensure geometry has vertex normals 
+          child.geometry.computeVertexNormals && child.geometry.computeVertexNormals();
+
+          roomMeshes.push(child);
+        }
+      });
+
+      root.scale.set(10,10,10); 
+      scene.add(root);
+
+      currentRoomRoot = root;
+    }, 
+    undefined, 
+    (err) => { //on error, creates a box
+
+      console.error('Model load error', err);
+      createFallbackRoom();
+
+    });
+  }
+    
+  // simple box room 
+  function createFallbackRoom() {
+    if (currentRoomRoot) scene.remove(currentRoomRoot);
+
+    const room = new THREE.Group();
+    const size = 100;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xededed, side: THREE.FrontSide });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), wallMat);
+
+    box.geometry.computeVertexNormals && box.geometry.computeVertexNormals();
+    room.add(box);
+    roomMeshes.push(box);
+    scene.add(room);
+
+    currentRoomRoot = room;
+  }
+
+  function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  function onPointerMove(event) {
+    if (!event.isPrimary) return;
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  function onPointerDown(event) {
+    if (!event.isPrimary) return;
+
+    // compute mouse for raycaster
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    // intersect against all room meshes
+    const hits = raycaster.intersectObjects(roomMeshes, false);
+
+    if (hits.length === 0) return;
+
+   
+    const toProcess = [hits[0]];
+
+    for (let i = 0; i < toProcess.length; i++) {
+      const hit = toProcess[i];
+      applyStickerToHit(hit);
+
+      // remove oldest decals to keep count manageable
+      if (decals.length > params.maxDecals) {
+        const d = decals.shift();
+        scene.remove(d);
+
+      }
+
+
+    }
+  }
+
+  function applyStickerToHit(hit) {
+    const targetMesh = hit.object;
+    const position = hit.point.clone();
+
+    // face normal in world space 
+    let normal = hit.face && hit.face.normal ? hit.face.normal.clone() : new THREE.Vector3(0,0,1);
+    normal.transformDirection(targetMesh.matrixWorld);
+     
+
+
+    // orient helper to look along normal
+    mouseHelper.position.copy(position);
+    const lookAt = position.clone().add(normal);
+    mouseHelper.lookAt(lookAt);
+
+    // orientation copied from helper
+    const orientation = new THREE.Euler().copy(mouseHelper.rotation);
+
+    //if on, add random z 
+    if (params.rotateRandom) {
+      orientation.z += Math.random() * Math.PI * 2;
+    }
+
+    // random sticker scale
+    const scale = params.Scale;
+    const size = new THREE.Vector3(scale, scale, scale);
+
+    // clone decal material ans set color for individuality
+    const mat = baseDecalMaterial.clone();
+    mat.color = new THREE.Color(params.stickerTint);
+    mat.map = baseDecalMaterial.map;
+    mat.transparent = true;
+    mat.depthWrite = false;
+
+    //build decal geometry in relation to the target mesh
+    const decalGeometry = new DecalGeometry(targetMesh, position, orientation, size);
+
+    const sticker = new THREE.Mesh(decalGeometry, mat);
+    sticker.renderOrder = decals.length;
+    decals.push(sticker);
+    scene.add(sticker);
+  }
+
+  function removeDecals() {
+    decals.forEach(d => scene.remove(d));
+    decals.length = 0;
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+    stats.update();
+  }
+  </script>
+</body>
+</html>
